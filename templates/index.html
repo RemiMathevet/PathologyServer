@@ -1,0 +1,1693 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FoetoPath — Slide Viewer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/openseadragon/4.1.1/openseadragon.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0f1117;
+            --bg-secondary: #181a23;
+            --bg-tertiary: #1e2130;
+            --bg-hover: #262a3d;
+            --bg-active: #2d3250;
+            --border: #2a2d3e;
+            --text-primary: #e8eaf0;
+            --text-secondary: #9498ab;
+            --text-muted: #5f6378;
+            --accent: #6c8aff;
+            --accent-dim: #4a62c4;
+            --accent-glow: rgba(108, 138, 255, 0.15);
+            --accent-photo: #e89b4e;
+            --accent-photo-dim: #b87a3a;
+            --accent-photo-glow: rgba(232, 155, 78, 0.15);
+            --success: #4ade80;
+            --warning: #fbbf24;
+            --danger: #f87171;
+            --carousel-h: 110px;
+            --sidebar-w: 280px;
+            --topbar-h: 56px;
+            --radius: 8px;
+            --radius-sm: 5px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; overflow: hidden; }
+        body {
+            font-family: 'DM Sans', -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+
+        /* ── Top Bar ─────────────────────────────────────── */
+        .topbar {
+            height: var(--topbar-h);
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            gap: 16px;
+            z-index: 100;
+        }
+        .topbar-brand {
+            font-weight: 600; font-size: 15px; letter-spacing: -0.3px;
+            color: var(--accent); white-space: nowrap; user-select: none;
+        }
+        .topbar-brand span { color: var(--text-muted); font-weight: 400; }
+        .topbar-sep { width: 1px; height: 24px; background: var(--border); }
+        .folder-input-group {
+            display: flex; align-items: center; gap: 8px; flex: 1; max-width: 700px;
+        }
+        .folder-input {
+            flex: 1; background: var(--bg-tertiary); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); padding: 7px 12px; color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace; font-size: 12.5px; outline: none;
+            transition: border-color 0.2s;
+        }
+        .folder-input:focus { border-color: var(--accent); }
+        .folder-input::placeholder { color: var(--text-muted); }
+        .btn {
+            padding: 7px 16px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+            background: var(--bg-tertiary); color: var(--text-primary);
+            font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
+            cursor: pointer; transition: all 0.15s; white-space: nowrap;
+        }
+        .btn:hover { background: var(--bg-hover); border-color: var(--accent-dim); }
+        .btn-primary { background: var(--accent-dim); border-color: var(--accent); color: white; }
+        .btn-primary:hover { background: var(--accent); }
+        .btn-label {
+            padding: 5px 10px; font-size: 12px; gap: 4px;
+            display: none; align-items: center;
+        }
+        .btn-label.visible { display: inline-flex; }
+        .btn-label svg { width: 14px; height: 14px; }
+        .slide-meta {
+            margin-left: auto; font-size: 12px; color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace; white-space: nowrap;
+        }
+
+        /* ── Layout ──────────────────────────────────────── */
+        .main-layout { display: flex; height: calc(100vh - var(--topbar-h)); }
+
+        /* ── Sidebar ─────────────────────────────────────── */
+        .sidebar {
+            width: var(--sidebar-w); min-width: var(--sidebar-w);
+            background: var(--bg-secondary); border-right: 1px solid var(--border);
+            display: flex; flex-direction: column; overflow: hidden;
+        }
+        .sidebar-header {
+            padding: 14px 16px 10px; font-size: 11px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+        }
+        .case-list { flex: 1; overflow-y: auto; padding: 6px; }
+        .case-list::-webkit-scrollbar { width: 4px; }
+        .case-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        .case-item {
+            padding: 10px 12px; border-radius: var(--radius-sm);
+            cursor: pointer; transition: all 0.15s; margin-bottom: 2px;
+        }
+        .case-item:hover { background: var(--bg-hover); }
+        .case-item.active { background: var(--bg-active); border-left: 3px solid var(--accent); }
+        .case-item-name {
+            font-size: 13px; font-weight: 500; color: var(--text-primary); margin-bottom: 2px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .case-item-counts { font-size: 11px; color: var(--text-muted); display: flex; gap: 8px; }
+        .case-item-counts .photo-count { color: var(--accent-photo-dim); }
+        .sidebar-empty {
+            padding: 24px 16px; text-align: center; color: var(--text-muted);
+            font-size: 13px; line-height: 1.6;
+        }
+        .sidebar-empty svg { display: block; margin: 0 auto 12px; opacity: 0.3; }
+
+        /* ── Resize Handle ───────────────────────────────── */
+        .resize-handle {
+            width: 8px; cursor: col-resize; background: transparent; transition: background 0.15s;
+            flex-shrink: 0; position: relative; z-index: 300;
+        }
+        .resize-handle:hover, .resize-handle.dragging { background: var(--accent-dim); }
+        .resize-handle::after {
+            content: ''; position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%); width: 3px; height: 32px;
+            border-radius: 2px; background: var(--text-muted); opacity: 0; transition: opacity 0.15s;
+        }
+        .resize-handle:hover::after, .resize-handle.dragging::after { opacity: 0.6; }
+        .drag-overlay {
+            display: none; position: fixed; inset: 0; z-index: 9999; cursor: col-resize;
+        }
+        .drag-overlay.active { display: block; }
+
+        /* ── Content Area ────────────────────────────────── */
+        .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+
+        /* ── Viewer ──────────────────────────────────────── */
+        #viewer { flex: 1; background: var(--bg-primary); position: relative; }
+        #viewer .openseadragon-canvas { outline: none !important; }
+        .openseadragon-container div[title] { opacity: 0.5 !important; }
+        .openseadragon-container div[title]:hover { opacity: 0.9 !important; }
+
+        /* ── Carousel ────────────────────────────────────── */
+        .carousel-wrapper {
+            background: var(--bg-secondary); border-top: 1px solid var(--border);
+            display: none; flex-direction: column; overflow: hidden;
+        }
+        .carousel-wrapper.visible { display: flex; }
+        .carousel-section-label {
+            padding: 6px 14px 2px; font-size: 10px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted);
+            user-select: none; flex-shrink: 0;
+        }
+        .carousel-section-label.photo-label { color: var(--accent-photo-dim); }
+        .carousel-section-label.slide-label { color: var(--accent-dim); }
+        .carousel-scroll {
+            display: flex; align-items: center; padding: 4px 12px 8px; gap: 8px;
+            overflow-x: auto; overflow-y: hidden; flex-shrink: 0;
+        }
+        .carousel-scroll::-webkit-scrollbar { height: 4px; }
+        .carousel-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        .carousel-item {
+            flex-shrink: 0; width: 80px; height: 80px; border-radius: var(--radius);
+            overflow: hidden; cursor: pointer; border: 2px solid transparent;
+            transition: all 0.2s; position: relative; background: var(--bg-tertiary);
+        }
+        .carousel-item:hover { transform: translateY(-2px); }
+        .carousel-item.slide-item:hover { border-color: var(--accent-dim); }
+        .carousel-item.slide-item.active { border-color: var(--accent); box-shadow: 0 0 12px var(--accent-glow); }
+        .carousel-item.photo-item:hover { border-color: var(--accent-photo-dim); }
+        .carousel-item.photo-item.active { border-color: var(--accent-photo); box-shadow: 0 0 12px var(--accent-photo-glow); }
+        .carousel-item img { width: 100%; height: 100%; object-fit: cover; }
+        .carousel-item-label {
+            position: absolute; bottom: 0; left: 0; right: 0; padding: 2px 4px;
+            background: linear-gradient(transparent, rgba(0,0,0,0.85));
+            font-size: 8px; color: #ccc; text-align: center;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+        }
+
+        /* ── Label Popup ─────────────────────────────────── */
+        .label-popup {
+            position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+            z-index: 400; background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: var(--radius); box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            padding: 8px; display: none; flex-direction: column; align-items: center; gap: 6px;
+            max-width: 90vw;
+        }
+        .label-popup.visible { display: flex; }
+        .label-popup img {
+            max-height: 40vh; max-width: 80vw; border-radius: var(--radius-sm);
+            object-fit: contain;
+        }
+        .label-popup-bar {
+            display: flex; align-items: center; gap: 8px; width: 100%;
+        }
+        .label-popup-title {
+            font-size: 11px; color: var(--text-muted); flex: 1;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .label-popup-close {
+            width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--border);
+            background: var(--bg-tertiary); color: var(--text-muted); font-size: 14px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s;
+        }
+        .label-popup-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+        /* ── View mode badge ─────────────────────────────── */
+        .view-badge {
+            position: absolute; top: 12px; left: 12px; z-index: 20;
+            font-size: 11px; font-weight: 600; padding: 4px 10px;
+            border-radius: var(--radius-sm); display: none; user-select: none;
+        }
+        .view-badge.visible { display: block; }
+        .view-badge.photo-mode {
+            background: rgba(232, 155, 78, 0.15); color: var(--accent-photo);
+            border: 1px solid var(--accent-photo-dim);
+        }
+
+        /* ── Loading ─────────────────────────────────────── */
+        .loading-overlay {
+            position: absolute; inset: 0; background: rgba(15, 17, 23, 0.85);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 50; opacity: 0; pointer-events: none; transition: opacity 0.2s;
+        }
+        .loading-overlay.visible { opacity: 1; pointer-events: auto; }
+        .spinner {
+            width: 32px; height: 32px; border: 3px solid var(--border);
+            border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Toast ────────────────────────────────────────── */
+        .toast {
+            position: fixed; bottom: 24px; right: 24px; background: var(--bg-tertiary);
+            border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 12px 18px; font-size: 13px; color: var(--text-primary);
+            z-index: 999; opacity: 0; transform: translateY(10px);
+            transition: all 0.25s; max-width: 360px;
+        }
+        .toast.visible { opacity: 1; transform: translateY(0); }
+        .toast.error { border-color: var(--danger); }
+
+        /* ── Welcome ─────────────────────────────────────── */
+        .welcome-screen {
+            position: absolute; inset: 0; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 10; padding: 40px;
+        }
+        .welcome-screen.hidden { display: none; }
+        .welcome-icon {
+            width: 80px; height: 80px; border-radius: 20px;
+            background: linear-gradient(135deg, var(--accent-dim) 0%, #4a62c4 100%);
+            display: flex; align-items: center; justify-content: center; margin-bottom: 20px;
+        }
+        .welcome-title { font-size: 22px; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.5px; }
+        .welcome-sub { color: var(--text-secondary); font-size: 14px; text-align: center; line-height: 1.6; max-width: 400px; }
+        .welcome-steps { margin-top: 30px; display: flex; gap: 32px; }
+        .welcome-step { text-align: center; color: var(--text-muted); font-size: 12px; }
+        .welcome-step-num {
+            width: 28px; height: 28px; border-radius: 50%; background: var(--bg-tertiary);
+            border: 1px solid var(--border); display: flex; align-items: center;
+            justify-content: center; margin: 0 auto 8px; font-weight: 600; font-size: 12px; color: var(--accent);
+        }
+
+        /* ── Right Panel (CR) ─────────────────────────────── */
+        .right-panel {
+            width: 0;
+            min-width: 0;
+            background: var(--bg-secondary);
+            border-left: 1px solid var(--border);
+            overflow: hidden;
+            transition: width 0.25s, min-width 0.25s;
+            display: flex;
+            flex-direction: column;
+        }
+        .right-panel.no-transition { transition: none; }
+        .right-panel.visible {
+            width: 520px;
+            min-width: 360px;
+        }
+        .right-panel-header {
+            padding: 8px 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .right-panel-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .right-panel-close {
+            width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--border);
+            background: var(--bg-tertiary); color: var(--text-muted); font-size: 14px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+        .right-panel-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .right-panel iframe {
+            flex: 1;
+            width: 100%;
+            border: none;
+            background: white;
+        }
+        .resize-handle-right {
+            width: 8px; cursor: col-resize; background: transparent; transition: background 0.15s;
+            flex-shrink: 0; position: relative; z-index: 300; display: none;
+        }
+        .resize-handle-right.visible { display: block; }
+        .resize-handle-right:hover, .resize-handle-right.dragging { background: var(--accent-dim); }
+        .resize-handle-right::after {
+            content: ''; position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%); width: 3px; height: 32px;
+            border-radius: 2px; background: var(--text-muted); opacity: 0; transition: opacity 0.15s;
+        }
+        .resize-handle-right:hover::after, .resize-handle-right.dragging::after { opacity: 0.6; }
+
+        .btn-cr { padding: 5px 10px; font-size: 12px; gap: 4px; display: inline-flex; align-items: center; }
+        .btn-cr svg { width: 14px; height: 14px; }
+        .btn-cr.active { background: var(--accent-dim); border-color: var(--accent); color: white; }
+
+        /* ── Annotation System ───────────────────────────── */
+        .btn-ann {
+            padding: 5px 10px; font-size: 12px; gap: 4px; display: inline-flex; align-items: center;
+        }
+        .btn-ann svg { width: 14px; height: 14px; }
+        .btn-ann.active { background: #c0392b; border-color: #e74c3c; color: white; }
+
+        /* Annotation right panel */
+        .ann-panel {
+            width: 0; min-width: 0; background: var(--bg-secondary);
+            border-left: 1px solid var(--border); overflow: hidden;
+            transition: width 0.25s, min-width 0.25s;
+            display: flex; flex-direction: column;
+        }
+        .ann-panel.no-transition { transition: none; }
+        .ann-panel.visible { width: 340px; min-width: 280px; }
+
+        .ann-panel-header {
+            padding: 8px 12px; display: flex; align-items: center;
+            justify-content: space-between; border-bottom: 1px solid var(--border); flex-shrink: 0;
+        }
+        .ann-panel-title {
+            font-size: 12px; font-weight: 600; color: var(--text-secondary);
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .ann-panel-close {
+            width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--border);
+            background: var(--bg-tertiary); color: var(--text-muted); font-size: 14px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+        .ann-panel-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+        /* Drawing tools section */
+        .ann-tools {
+            padding: 10px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .ann-tools-row { display: flex; align-items: center; gap: 8px; }
+        .ann-tools-row-label {
+            font-size: 10px; font-weight: 600; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.4px; width: 50px; flex-shrink: 0;
+        }
+        .ann-colors { display: flex; gap: 4px; }
+        .ann-color-btn {
+            width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent;
+            cursor: pointer; transition: all 0.15s;
+        }
+        .ann-color-btn:hover { transform: scale(1.2); }
+        .ann-color-btn.active { border-color: white; box-shadow: 0 0 6px rgba(255,255,255,0.4); }
+
+        .ann-level-group { display: flex; gap: 2px; }
+        .ann-level-btn {
+            padding: 2px 8px; border-radius: 3px; border: 1px solid var(--border);
+            background: var(--bg-tertiary); color: var(--text-muted); font-size: 10px;
+            cursor: pointer; transition: all 0.15s; font-family: 'DM Sans', sans-serif;
+        }
+        .ann-level-btn:hover { background: var(--bg-hover); }
+        .ann-level-btn.active { background: var(--accent-dim); border-color: var(--accent); color: white; }
+
+        .ann-input {
+            flex: 1; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px;
+            background: var(--bg-tertiary); color: var(--text-primary); font-size: 12px;
+            font-family: 'DM Sans', sans-serif; outline: none;
+        }
+        .ann-input:focus { border-color: var(--accent); }
+
+        .ann-btn {
+            padding: 4px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+            background: var(--bg-tertiary); color: var(--text-primary); font-size: 11px;
+            cursor: pointer; transition: all 0.15s; font-family: 'DM Sans', sans-serif;
+        }
+        .ann-btn:hover { background: var(--bg-hover); }
+        .ann-btn.save:hover { background: var(--accent-dim); border-color: var(--accent); color: white; }
+        .ann-btn.danger:hover { background: #c0392b; border-color: #e74c3c; color: white; }
+
+        /* Annotation list */
+        .ann-list-header {
+            padding: 6px 12px; display: flex; align-items: center; gap: 8px;
+            border-bottom: 1px solid var(--border); flex-shrink: 0;
+        }
+        .ann-list-header-title {
+            font-size: 10px; font-weight: 600; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.4px; flex: 1;
+        }
+        .ann-count { color: var(--text-muted); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+        .ann-list-scroll { overflow-y: auto; flex: 1; padding: 4px; }
+        .ann-list-scroll::-webkit-scrollbar { width: 4px; }
+        .ann-list-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+        .ann-list-item {
+            display: flex; align-items: center; gap: 6px; padding: 6px 8px;
+            border-radius: var(--radius-sm); margin-bottom: 2px;
+            transition: background 0.1s; cursor: default;
+        }
+        .ann-list-item:hover { background: var(--bg-hover); }
+        .ann-list-item.highlighted { background: var(--bg-active); }
+
+        .ann-list-swatch { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+        .ann-list-info { flex: 1; min-width: 0; }
+        .ann-list-info-label {
+            font-size: 12px; font-weight: 500; color: var(--text-primary);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .ann-list-info-meta {
+            font-size: 10px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;
+        }
+        .ann-list-actions { display: flex; gap: 3px; flex-shrink: 0; }
+        .ann-list-action {
+            width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--border);
+            background: var(--bg-tertiary); color: var(--text-muted); font-size: 11px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+        .ann-list-action:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .ann-list-action.goto:hover { color: var(--accent); }
+        .ann-list-action.delete:hover { color: #e74c3c; }
+        .ann-list-empty { padding: 16px; text-align: center; color: var(--text-muted); font-size: 12px; }
+        .ann-edit-input {
+            width: 100%; padding: 2px 4px; border: 1px solid var(--accent);
+            border-radius: 3px; background: var(--bg-tertiary); color: var(--text-primary);
+            font-size: 11px; font-family: 'DM Sans', sans-serif; outline: none;
+        }
+
+        #annotationCanvas {
+            position: absolute; inset: 0; z-index: 55; pointer-events: none; cursor: crosshair;
+        }
+        #annotationCanvas.drawing { pointer-events: auto; }
+
+        .ann-drawing-badge {
+            position: absolute; top: 12px; left: 12px; z-index: 60;
+            font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: var(--radius-sm);
+            background: rgba(231, 76, 60, 0.15); color: #e74c3c; border: 1px solid #c0392b;
+            display: none; user-select: none; animation: pulse-ann 1.5s infinite;
+        }
+        .ann-drawing-badge.visible { display: block; }
+        @keyframes pulse-ann {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        /* Annotation export */
+        .ann-export {
+            padding: 10px 12px; border-top: 1px solid var(--border); flex-shrink: 0;
+        }
+        .ann-export-title {
+            font-size: 10px; font-weight: 600; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px;
+        }
+        .ann-export-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+        .ann-export-label { font-size: 11px; color: var(--text-secondary); width: 55px; flex-shrink: 0; }
+        .ann-export-select, .ann-export-num {
+            flex: 1; padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px;
+            background: var(--bg-tertiary); color: var(--text-primary); font-size: 11px;
+            font-family: 'JetBrains Mono', monospace; outline: none;
+        }
+        .ann-export-select:focus, .ann-export-num:focus { border-color: var(--accent); }
+        .ann-export-btn {
+            width: 100%; padding: 6px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+            background: var(--bg-tertiary); color: var(--text-primary); font-size: 12px;
+            font-weight: 500; cursor: pointer; transition: all 0.15s;
+            font-family: 'DM Sans', sans-serif; margin-top: 4px;
+        }
+        .ann-export-btn:hover { background: var(--accent-dim); border-color: var(--accent); color: white; }
+        .ann-export-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .ann-export-progress {
+            font-size: 10px; color: var(--text-muted); text-align: center; margin-top: 4px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* ── Shortcuts ───────────────────────────────────── */
+        .shortcuts-hint {
+            position: absolute; top: 12px; right: 12px; z-index: 20;
+            font-size: 11px; color: var(--text-muted); background: rgba(24, 26, 35, 0.9);
+            padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+            display: none;
+        }
+        .shortcuts-hint.visible { display: block; }
+        kbd {
+            background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 3px;
+            padding: 1px 5px; font-family: 'JetBrains Mono', monospace; font-size: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ── Top Bar ──────────────────────────────────────────── -->
+<div class="topbar">
+    <div class="topbar-brand">FoetoPath <span>Slide Viewer</span></div>
+    <div class="topbar-sep"></div>
+    <div class="folder-input-group">
+        <input type="text" class="folder-input" id="rootInput"
+               placeholder="Chemin du dossier contenant les lames (ex: D:\Lames\2024)"
+               value="{{ default_root }}" spellcheck="false">
+        <button class="btn btn-primary" onclick="loadCases()" id="btnLoad">Charger</button>
+    </div>
+    <button class="btn btn-label" id="btnLabel" onclick="toggleLabel()" title="Afficher l'étiquette (L)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="5" width="18" height="14" rx="2"/>
+            <line x1="7" y1="9" x2="17" y2="9"/>
+            <line x1="7" y1="13" x2="13" y2="13"/>
+        </svg>
+        Étiquette
+    </button>
+    <button class="btn btn-cr" id="btnCR" onclick="toggleCR()" title="Compte-rendu placenta (P)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+            <polyline points="14,2 14,8 20,8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+        </svg>
+        CR
+    </button>
+    <button class="btn btn-ann" id="btnAnnotate" onclick="toggleAnnotationMode()" title="Mode annotation (N)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+            <path d="M2 2l7.586 7.586"/>
+            <circle cx="11" cy="11" r="2"/>
+        </svg>
+        Annoter
+    </button>
+    <div class="slide-meta" id="slideMeta"></div>
+</div>
+
+<!-- ── Main Layout ─────────────────────────────────────── -->
+<div class="main-layout">
+    <div class="sidebar">
+        <div class="sidebar-header">
+            Cas <span id="caseCount" style="float:right; color: var(--accent)"></span>
+        </div>
+        <div class="case-list" id="caseList">
+            <div class="sidebar-empty">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                </svg>
+                Entrez un chemin de dossier ci-dessus et cliquez <strong>Charger</strong>
+            </div>
+        </div>
+    </div>
+
+    <div class="resize-handle" id="resizeHandle"></div>
+
+    <div class="content">
+        <div class="welcome-screen" id="welcomeScreen">
+            <div class="welcome-icon">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41"/>
+                </svg>
+            </div>
+            <div class="welcome-title">Visionneuse de lames numériques</div>
+            <div class="welcome-sub">Parcourez vos lames histologiques et photos associées.</div>
+            <div class="welcome-steps">
+                <div class="welcome-step"><div class="welcome-step-num">1</div>Entrez le chemin<br>du dossier</div>
+                <div class="welcome-step"><div class="welcome-step-num">2</div>Sélectionnez<br>un cas</div>
+                <div class="welcome-step"><div class="welcome-step-num">3</div>Explorez lames<br>et photos</div>
+            </div>
+        </div>
+
+        <div id="viewer"></div>
+
+        <div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>
+
+        <!-- Annotation drawing badge (visible when drawing mode is on) -->
+        <div class="ann-drawing-badge" id="annDrawingBadge">&#9998; Mode dessin actif</div>
+
+        <!-- Annotation canvas overlay -->
+        <canvas id="annotationCanvas"></canvas>
+
+        <!-- View mode badge (shown when viewing a photo) -->
+        <div class="view-badge photo-mode" id="viewBadge">&#128247; Photo</div>
+
+        <!-- Label popup -->
+        <div class="label-popup" id="labelPopup">
+            <div class="label-popup-bar">
+                <span class="label-popup-title" id="labelPopupTitle">Étiquette</span>
+                <button class="label-popup-close" onclick="closeLabel()" title="Fermer">&times;</button>
+            </div>
+            <img id="labelPopupImg" src="" alt="Étiquette">
+        </div>
+
+        <div class="shortcuts-hint" id="shortcutsHint">
+            <kbd>&#8592;</kbd><kbd>&#8593;</kbd><kbd>&#8595;</kbd><kbd>&#8594;</kbd> Déplacer 90%
+            &nbsp;<kbd>4</kbd><kbd>6</kbd> / <kbd>Q</kbd><kbd>D</kbd> Préc./Suiv.
+            &nbsp;<kbd>7</kbd><kbd>9</kbd> Rot. 90° &nbsp;<kbd>A</kbd><kbd>E</kbd> Rot. 10°
+            &nbsp;<kbd>R</kbd> Reset &nbsp;<kbd>F</kbd> Plein écran &nbsp;<kbd>L</kbd> Étiquette &nbsp;<kbd>P</kbd> CR &nbsp;<kbd>N</kbd> Annoter
+        </div>
+
+        <div class="carousel-wrapper" id="carousel"></div>
+    </div>
+
+    <!-- Right panel resize handle -->
+    <div class="resize-handle-right" id="resizeHandleRight"></div>
+
+    <!-- Right panel: CR Placenta -->
+    <div class="right-panel" id="rightPanel">
+        <div class="right-panel-header">
+            <span class="right-panel-title">&#128203; Compte-Rendu Placenta</span>
+            <button class="right-panel-close" onclick="toggleCR()" title="Fermer">&times;</button>
+        </div>
+        <iframe id="crIframe" src=""></iframe>
+    </div>
+
+    <!-- Right panel: Annotations -->
+    <div class="ann-panel" id="annPanel">
+        <div class="ann-panel-header">
+            <span class="ann-panel-title">&#9998; Annotations</span>
+            <button class="ann-panel-close" onclick="toggleAnnotationMode()" title="Fermer">&times;</button>
+        </div>
+
+        <!-- Drawing tools -->
+        <div class="ann-tools">
+            <div class="ann-tools-row">
+                <span class="ann-tools-row-label">Niveau</span>
+                <div class="ann-level-group" id="annLevels">
+                    <button class="ann-level-btn active" onclick="annSetLevel(1, this)">1 Macro</button>
+                    <button class="ann-level-btn" onclick="annSetLevel(2, this)">2 Cyto</button>
+                    <button class="ann-level-btn" onclick="annSetLevel(3, this)">3 Cell</button>
+                </div>
+            </div>
+            <div class="ann-tools-row">
+                <span class="ann-tools-row-label">Couleur</span>
+                <div class="ann-colors" id="annColors"></div>
+            </div>
+            <div class="ann-tools-row">
+                <span class="ann-tools-row-label">Label</span>
+                <input type="text" class="ann-input" id="annLabelInput" placeholder="Label de l'annotation...">
+            </div>
+            <div class="ann-tools-row" style="justify-content: flex-end; gap: 6px;">
+                <button class="ann-btn" onclick="annUndo()">Annuler</button>
+                <button class="ann-btn danger" onclick="annClearAll()">Effacer tout</button>
+                <button class="ann-btn save" onclick="annSave()">Sauvegarder</button>
+            </div>
+        </div>
+
+        <!-- Annotation list -->
+        <div class="ann-list-header">
+            <span class="ann-list-header-title">Liste</span>
+            <span class="ann-count" id="annCount">0</span>
+        </div>
+        <div class="ann-list-scroll" id="annListScroll">
+            <div class="ann-list-empty">Dessinez sur la lame pour annoter</div>
+        </div>
+
+        <!-- Tile export -->
+        <div class="ann-export">
+            <div class="ann-export-title">&#128230; Export tuiles</div>
+            <div class="ann-export-row">
+                <span class="ann-export-label">Niveau</span>
+                <select class="ann-export-select" id="exportLevel"></select>
+            </div>
+            <div class="ann-export-row">
+                <span class="ann-export-label">Taille</span>
+                <select class="ann-export-select" id="exportTileSize">
+                    <option value="256">256 px</option>
+                    <option value="512" selected>512 px</option>
+                    <option value="1024">1024 px</option>
+                    <option value="2048">2048 px</option>
+                </select>
+            </div>
+            <div class="ann-export-row">
+                <span class="ann-export-label">Format</span>
+                <select class="ann-export-select" id="exportFormat">
+                    <option value="jpeg">JPEG</option>
+                    <option value="blosc">Blosc (numpy)</option>
+                </select>
+            </div>
+            <button class="ann-export-btn" id="exportBtn" onclick="annExportTiles()" disabled>
+                Exporter les tuiles
+            </button>
+            <div class="ann-export-progress" id="exportProgress"></div>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="drag-overlay" id="dragOverlay"></div>
+
+<script>
+// ── State ────────────────────────────────────────────────
+let state = {
+    root: '',
+    cases: [],
+    currentCase: null,
+    slides: [],
+    photos: [],
+    currentSlideIndex: -1,
+    currentPhotoIndex: -1,
+    osdViewer: null,
+    rotation: 0,
+    viewMode: 'slide', // 'slide' or 'photo'
+    labelVisible: false,
+    // Annotation state
+    annMode: false,
+    annColor: '#e74c3c',
+    annLevel: 1,  // 1=macro, 2=cytoarchitecture, 3=cellulaire
+    annLabel: '',
+    annotations: [],     // [{points_px, color, label, level, id, created}, ...]
+    annDrawing: false,
+    annCurrentPath: [],
+    annHighlighted: null, // id of highlighted annotation
+};
+
+// ── Helpers ──────────────────────────────────────────────
+function toast(msg, isError = false) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.toggle('error', isError);
+    el.classList.add('visible');
+    clearTimeout(el._timer);
+    el._timer = setTimeout(() => el.classList.remove('visible'), 3500);
+}
+function setLoading(on) {
+    document.getElementById('loadingOverlay').classList.toggle('visible', on);
+}
+async function api(url, body) {
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    return res.json();
+}
+
+// ── OSD Creation Helper ──────────────────────────────────
+function createOSD(tileSources) {
+    if (state.osdViewer) { state.osdViewer.destroy(); state.osdViewer = null; }
+    state.rotation = 0;
+    state.osdViewer = OpenSeadragon({
+        id: 'viewer',
+        prefixUrl: 'https://cdnjs.cloudflare.com/ajax/libs/openseadragon/4.1.1/images/',
+        tileSources: tileSources,
+        animationTime: 0.3,
+        blendTime: 0.1,
+        constrainDuringPan: false,
+        maxZoomPixelRatio: 4,
+        minZoomImageRatio: 0.5,
+        visibilityRatio: 0.3,
+        zoomPerScroll: 1.3,
+        zoomPerClick: 2.0,
+        showNavigator: true,
+        navigatorPosition: 'BOTTOM_RIGHT',
+        navigatorSizeRatio: 0.15,
+        navigatorAutoFade: true,
+        showNavigationControl: true,
+        navigationControlAnchor: OpenSeadragon.ControlAnchor.TOP_LEFT,
+        gestureSettingsMouse: { clickToZoom: true, dblClickToZoom: true },
+        gestureSettingsTouch: { pinchToZoom: true },
+        crossOriginPolicy: false,
+        timeout: 60000,
+        degrees: 0,
+        tabIndex: -1,
+    });
+    state.osdViewer.innerTracker.keyHandler = null;
+    state.osdViewer.innerTracker.keyDownHandler = null;
+    state.osdViewer.addHandler('open', () => setLoading(false));
+    state.osdViewer.addHandler('open-failed', () => {
+        setLoading(false);
+        toast('Erreur ouverture', true);
+    });
+    // Attach annotation re-render on viewport change
+    annAttachViewportHandler();
+}
+
+// ── Load Cases ───────────────────────────────────────────
+async function loadCases() {
+    const root = document.getElementById('rootInput').value.trim();
+    if (!root) { toast('Entrez un chemin de dossier', true); return; }
+    state.root = root;
+    const btn = document.getElementById('btnLoad');
+    btn.textContent = '...'; btn.disabled = true;
+    try {
+        const data = await api('/api/browse', { root });
+        if (data.error) { toast(data.error, true); return; }
+        state.cases = data.cases;
+        renderCaseList();
+        document.getElementById('caseCount').textContent = data.cases.length;
+        toast(data.cases.length === 0 ? 'Aucun cas trouvé' : `${data.cases.length} cas trouvé(s)`, data.cases.length === 0);
+    } catch (e) {
+        toast('Erreur réseau: ' + e.message, true);
+    } finally {
+        btn.textContent = 'Charger'; btn.disabled = false;
+    }
+}
+
+// ── Render Case List ─────────────────────────────────────
+function renderCaseList() {
+    const el = document.getElementById('caseList');
+    if (state.cases.length === 0) {
+        el.innerHTML = '<div class="sidebar-empty">Aucun cas trouvé</div>';
+        return;
+    }
+    el.innerHTML = state.cases.map((c, i) => {
+        const parts = [];
+        if (c.slide_count > 0) parts.push(`${c.slide_count} lame${c.slide_count > 1 ? 's' : ''}`);
+        if (c.photo_count > 0) parts.push(`<span class="photo-count">${c.photo_count} photo${c.photo_count > 1 ? 's' : ''}</span>`);
+        return `
+            <div class="case-item ${state.currentCase === i ? 'active' : ''}"
+                 onclick="selectCase(${i})" title="${c.path}">
+                <div class="case-item-name">${c.is_root ? '&#128194; ' : ''}${c.name}</div>
+                <div class="case-item-counts">${parts.join(' &middot; ')}</div>
+            </div>`;
+    }).join('');
+}
+
+// ── Select Case ──────────────────────────────────────────
+async function selectCase(index) {
+    state.currentCase = index;
+    state.currentSlideIndex = -1;
+    state.currentPhotoIndex = -1;
+    state.viewMode = 'slide';
+    closeLabel();
+    renderCaseList();
+    document.getElementById('welcomeScreen').classList.add('hidden');
+    const caseData = state.cases[index];
+    setLoading(true);
+    try {
+        const data = await api('/api/slides', { folder: caseData.path });
+        state.slides = data.slides || [];
+        state.photos = data.photos || [];
+        renderCarousel();
+        if (state.slides.length > 0) {
+            loadSlide(0);
+        } else if (state.photos.length > 0) {
+            loadPhoto(0);
+        } else {
+            if (state.osdViewer) { state.osdViewer.destroy(); state.osdViewer = null; }
+            document.getElementById('slideMeta').textContent = '';
+            setLoading(false);
+        }
+    } catch (e) {
+        toast('Erreur chargement: ' + e.message, true);
+        setLoading(false);
+    }
+}
+
+// ── Render Carousel ──────────────────────────────────────
+function renderCarousel() {
+    const el = document.getElementById('carousel');
+    const hasSlides = state.slides.length > 0;
+    const hasPhotos = state.photos.length > 0;
+    const showSlideRow = hasSlides && (state.slides.length > 1 || hasPhotos);
+
+    if (!showSlideRow && !hasPhotos) { el.classList.remove('visible'); return; }
+    el.classList.add('visible');
+    let html = '';
+
+    if (showSlideRow) {
+        html += '<div class="carousel-section-label slide-label">&#128300; Lames (' + state.slides.length + ')</div><div class="carousel-scroll">';
+        html += state.slides.map((s, i) => `
+            <div class="carousel-item slide-item ${state.viewMode === 'slide' && i === state.currentSlideIndex ? 'active' : ''}"
+                 onclick="loadSlide(${i})" title="${s.name}">
+                <img src="/api/slide/thumbnail?path=${encodeURIComponent(s.path)}&w=160&h=160" alt="${s.name}" loading="lazy">
+                <div class="carousel-item-label">${s.name}</div>
+            </div>`).join('');
+        html += '</div>';
+    }
+    if (hasPhotos) {
+        html += '<div class="carousel-section-label photo-label">&#128247; Photos (' + state.photos.length + ')</div><div class="carousel-scroll">';
+        html += state.photos.map((p, i) => `
+            <div class="carousel-item photo-item ${state.viewMode === 'photo' && i === state.currentPhotoIndex ? 'active' : ''}"
+                 onclick="loadPhoto(${i})" title="${p.filename} (${p.size_kb} KB)">
+                <img src="/api/photo/thumbnail?path=${encodeURIComponent(p.path)}&w=160&h=160" alt="${p.name}" loading="lazy">
+                <div class="carousel-item-label">${p.filename}</div>
+            </div>`).join('');
+        html += '</div>';
+    }
+    el.innerHTML = html;
+
+    requestAnimationFrame(() => {
+        const active = el.querySelector('.carousel-item.active');
+        if (active) active.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    });
+}
+
+// ── Load Slide (OpenSlide DZI) ───────────────────────────
+async function loadSlide(index) {
+    if (index < 0 || index >= state.slides.length) return;
+    state.currentSlideIndex = index;
+    state.viewMode = 'slide';
+    state.currentPhotoIndex = -1;
+    closeLabel();
+    const slide = state.slides[index];
+
+    setLoading(true);
+    renderCarousel();
+    document.getElementById('shortcutsHint').classList.add('visible');
+    document.getElementById('viewBadge').classList.remove('visible');
+    document.getElementById('btnLabel').classList.add('visible');
+
+    // Reset annotation mode on slide switch
+    if (state.annMode) toggleAnnotationMode();
+
+    try {
+        const info = await api('/api/slide/info', { path: slide.path });
+        if (info.dimensions) {
+            const [w, h] = info.dimensions;
+            const mpx = ((w * h) / 1e6).toFixed(1);
+            document.getElementById('slideMeta').textContent =
+                `${slide.name}  \u00b7  ${w.toLocaleString()} \u00d7 ${h.toLocaleString()} px  \u00b7  ${mpx} Mpx`;
+            // Populate export level dropdown
+            annPopulateLevels(info);
+        }
+    } catch (e) {}
+
+    const tileSource = {
+        getTileUrl: function(level, x, y) {
+            return `/api/slide/tile/${level}/${x}_${y}.jpeg?path=${encodeURIComponent(slide.path)}`;
+        },
+        height: null, width: null, tileSize: 254, tileOverlap: 1, minLevel: 0, maxLevel: null,
+    };
+    try {
+        const dziRes = await fetch('/api/slide/dzi', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: slide.path }),
+        });
+        const xml = new DOMParser().parseFromString(await dziRes.text(), 'application/xml');
+        const image = xml.querySelector('Image'), size = xml.querySelector('Size');
+        if (image && size) {
+            tileSource.width = parseInt(size.getAttribute('Width'));
+            tileSource.height = parseInt(size.getAttribute('Height'));
+            tileSource.tileSize = parseInt(image.getAttribute('TileSize'));
+            tileSource.tileOverlap = parseInt(image.getAttribute('Overlap'));
+            tileSource.maxLevel = Math.ceil(Math.log2(Math.max(tileSource.width, tileSource.height)));
+        }
+    } catch (e) { toast('Erreur DZI: ' + e.message, true); setLoading(false); return; }
+
+    createOSD(tileSource);
+
+    // Load existing annotations for this slide
+    annLoad(slide.path);
+}
+
+// ── Load Photo (in OSD as simple image) ──────────────────
+function loadPhoto(index) {
+    if (index < 0 || index >= state.photos.length) return;
+    state.currentPhotoIndex = index;
+    state.viewMode = 'photo';
+    state.currentSlideIndex = -1;
+    closeLabel();
+    const photo = state.photos[index];
+
+    setLoading(true);
+    renderCarousel();
+    document.getElementById('shortcutsHint').classList.add('visible');
+    document.getElementById('viewBadge').classList.add('visible');
+    document.getElementById('btnLabel').classList.remove('visible');
+    document.getElementById('slideMeta').textContent =
+        `${photo.filename}  \u00b7  ${photo.size_kb} KB`;
+
+    createOSD({
+        type: 'image',
+        url: `/api/photo/serve?path=${encodeURIComponent(photo.path)}`,
+    });
+}
+
+// ── Navigate prev/next in current mode ───────────────────
+function navPrev() {
+    if (state.viewMode === 'slide') loadSlide(state.currentSlideIndex - 1);
+    else loadPhoto(state.currentPhotoIndex - 1);
+}
+function navNext() {
+    if (state.viewMode === 'slide') loadSlide(state.currentSlideIndex + 1);
+    else loadPhoto(state.currentPhotoIndex + 1);
+}
+
+// ── Label ────────────────────────────────────────────────
+function toggleLabel() {
+    if (state.labelVisible) { closeLabel(); return; }
+    if (state.viewMode !== 'slide' || state.currentSlideIndex < 0) return;
+    const slide = state.slides[state.currentSlideIndex];
+    const img = document.getElementById('labelPopupImg');
+    const popup = document.getElementById('labelPopup');
+
+    // Try label first, fallback to macro
+    img.onerror = function() {
+        img.onerror = function() {
+            toast('Pas d\'étiquette disponible pour cette lame', true);
+            popup.classList.remove('visible');
+            state.labelVisible = false;
+        };
+        img.src = `/api/slide/label?path=${encodeURIComponent(slide.path)}&type=macro`;
+        document.getElementById('labelPopupTitle').textContent = 'Macro — ' + slide.name;
+    };
+    img.src = `/api/slide/label?path=${encodeURIComponent(slide.path)}&type=label`;
+    document.getElementById('labelPopupTitle').textContent = 'Étiquette — ' + slide.name;
+    popup.classList.add('visible');
+    state.labelVisible = true;
+}
+function closeLabel() {
+    document.getElementById('labelPopup').classList.remove('visible');
+    state.labelVisible = false;
+}
+
+// ── Keyboard ─────────────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') { if (e.key === 'Enter' && e.target.id === 'rootInput') loadCases(); return; }
+
+    // Close label on Escape
+    if (e.key === 'Escape' && state.labelVisible) { closeLabel(); e.preventDefault(); return; }
+
+    const vp = state.osdViewer ? state.osdViewer.viewport : null;
+
+    // Helper: rotation-aware pan
+    function rotatedPan(rawDx, rawDy) {
+        if (!vp) return;
+        const angle = -state.rotation * Math.PI / 180;
+        const dx = Math.cos(angle) * rawDx - Math.sin(angle) * rawDy;
+        const dy = Math.sin(angle) * rawDx + Math.cos(angle) * rawDy;
+        vp.panBy(new OpenSeadragon.Point(dx, dy));
+    }
+
+    switch (e.key) {
+        // Arrow keys: pan 90% respecting rotation
+        case 'ArrowLeft':
+            e.preventDefault();
+            if (vp) { const b = vp.getBounds(); rotatedPan(-b.width * 0.9, 0); }
+            break;
+        case 'ArrowRight':
+            e.preventDefault();
+            if (vp) { const b = vp.getBounds(); rotatedPan(b.width * 0.9, 0); }
+            break;
+        case 'ArrowUp':
+            e.preventDefault();
+            if (vp) { const b = vp.getBounds(); rotatedPan(0, -b.height * 0.9); }
+            break;
+        case 'ArrowDown':
+            e.preventDefault();
+            if (vp) { const b = vp.getBounds(); rotatedPan(0, b.height * 0.9); }
+            break;
+
+        // Numpad 4/6 or Q/D: prev/next
+        case '4':
+            if (e.location === 3 || e.code === 'Numpad4') { e.preventDefault(); navPrev(); }
+            break;
+        case '6':
+            if (e.location === 3 || e.code === 'Numpad6') { e.preventDefault(); navNext(); }
+            break;
+        case 'q': case 'Q': e.preventDefault(); navPrev(); break;
+        case 'd': case 'D': e.preventDefault(); navNext(); break;
+
+        // Numpad 7/9: rotate 90° | A/E: rotate 10°
+        case '7':
+            if (e.location === 3 || e.code === 'Numpad7') {
+                e.preventDefault();
+                if (vp) { state.rotation = (state.rotation - 90 + 360) % 360; vp.setRotation(state.rotation); }
+            }
+            break;
+        case '9':
+            if (e.location === 3 || e.code === 'Numpad9') {
+                e.preventDefault();
+                if (vp) { state.rotation = (state.rotation + 90) % 360; vp.setRotation(state.rotation); }
+            }
+            break;
+        case 'a': case 'A':
+            e.preventDefault();
+            if (vp) { state.rotation = (state.rotation - 10 + 360) % 360; vp.setRotation(state.rotation); }
+            break;
+        case 'e': case 'E':
+            e.preventDefault();
+            if (vp) { state.rotation = (state.rotation + 10) % 360; vp.setRotation(state.rotation); }
+            break;
+
+        // R: reset
+        case 'r': case 'R':
+            if (vp) { state.rotation = 0; vp.setRotation(0); vp.goHome(); }
+            break;
+        // F: fullscreen
+        case 'f': case 'F':
+            if (state.osdViewer) state.osdViewer.setFullScreen(!state.osdViewer.isFullPage());
+            break;
+        // L: label toggle
+        case 'l': case 'L':
+            toggleLabel();
+            break;
+        // P: CR panel toggle
+        case 'p': case 'P':
+            toggleCR();
+            break;
+        // N: annotation mode toggle
+        case 'n': case 'N':
+            toggleAnnotationMode();
+            break;
+    }
+
+    // Ctrl+S: save annotations
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (state.annMode && state.annotations.length > 0) annSave();
+    }
+});
+
+document.getElementById('rootInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') loadCases();
+});
+
+// ── Annotation System ─────────────────────────────────────
+const ANN_COLORS = [
+    { color: '#e74c3c', name: 'Rouge' },
+    { color: '#27ae60', name: 'Vert' },
+    { color: '#2980b9', name: 'Bleu' },
+    { color: '#f39c12', name: 'Orange' },
+    { color: '#8e44ad', name: 'Violet' },
+    { color: '#1abc9c', name: 'Turquoise' },
+];
+const ANN_LEVELS = { 1: 'Macro', 2: 'Cytoarchitecture', 3: 'Cellulaire' };
+let annIdCounter = 0;
+
+// Init color buttons
+(function() {
+    const container = document.getElementById('annColors');
+    container.innerHTML = ANN_COLORS.map((c, i) => `
+        <div class="ann-color-btn ${i === 0 ? 'active' : ''}"
+             style="background:${c.color}"
+             onclick="annSetColor('${c.color}', this)"
+             title="${c.name}"></div>
+    `).join('');
+})();
+
+function annSetColor(color, el) {
+    state.annColor = color;
+    document.querySelectorAll('.ann-color-btn').forEach(b => b.classList.remove('active'));
+    if (el) el.classList.add('active');
+}
+
+function annSetLevel(level, el) {
+    state.annLevel = level;
+    document.querySelectorAll('.ann-level-btn').forEach(b => b.classList.remove('active'));
+    if (el) el.classList.add('active');
+}
+
+function toggleAnnotationMode() {
+    if (state.viewMode !== 'slide') { toast('Annotations disponibles uniquement sur les lames', true); return; }
+    state.annMode = !state.annMode;
+    const btn = document.getElementById('btnAnnotate');
+    const canvas = document.getElementById('annotationCanvas');
+    const panel = document.getElementById('annPanel');
+    const badge = document.getElementById('annDrawingBadge');
+    const handle = document.getElementById('resizeHandleRight');
+
+    btn.classList.toggle('active', state.annMode);
+    canvas.classList.toggle('drawing', state.annMode);
+    panel.classList.toggle('visible', state.annMode);
+    badge.classList.toggle('visible', state.annMode);
+
+    if (state.annMode) {
+        // Close CR panel if open
+        const crPanel = document.getElementById('rightPanel');
+        if (crPanel.classList.contains('visible')) {
+            crPanel.classList.remove('visible');
+            document.getElementById('btnCR').classList.remove('active');
+        }
+        handle.classList.add('visible');
+        // Disable only drag/pan, keep scroll zoom active
+        if (state.osdViewer) {
+            state.osdViewer.gestureSettingsMouse.scrollToZoom = true;
+            state.osdViewer.gestureSettingsMouse.clickToZoom = false;
+            state.osdViewer.gestureSettingsMouse.dblClickToZoom = false;
+            state.osdViewer.gestureSettingsMouse.pinchToZoom = true;
+            state.osdViewer.panHorizontal = false;
+            state.osdViewer.panVertical = false;
+        }
+        annResizeCanvas();
+        annRender();
+        annRenderList();
+    } else {
+        handle.classList.remove('visible');
+        // Restore full mouse navigation
+        if (state.osdViewer) {
+            state.osdViewer.gestureSettingsMouse.clickToZoom = true;
+            state.osdViewer.gestureSettingsMouse.dblClickToZoom = true;
+            state.osdViewer.panHorizontal = true;
+            state.osdViewer.panVertical = true;
+        }
+        state.annDrawing = false;
+        state.annCurrentPath = [];
+        state.annHighlighted = null;
+    }
+}
+
+function annResizeCanvas() {
+    const canvas = document.getElementById('annotationCanvas');
+    const viewer = document.getElementById('viewer');
+    canvas.width = viewer.clientWidth;
+    canvas.height = viewer.clientHeight;
+}
+
+function annScreenToImage(screenX, screenY) {
+    if (!state.osdViewer) return null;
+    const rect = state.osdViewer.element.getBoundingClientRect();
+    const vp = state.osdViewer.viewport;
+    const pt = vp.viewportToImageCoordinates(vp.pointFromPixel(
+        new OpenSeadragon.Point(screenX - rect.left, screenY - rect.top)));
+    return [Math.round(pt.x), Math.round(pt.y)];
+}
+
+function annImageToCanvas(imgX, imgY) {
+    if (!state.osdViewer) return null;
+    const vp = state.osdViewer.viewport;
+    const pt = vp.pixelFromPoint(vp.imageToViewportCoordinates(new OpenSeadragon.Point(imgX, imgY)));
+    return [pt.x, pt.y];
+}
+
+// ── Annotation Rendering ─────────────────────────────────
+function annRender() {
+    const canvas = document.getElementById('annotationCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (const ann of state.annotations) {
+        annDrawPath(ctx, ann.points_px, ann.color, true, ann.id === state.annHighlighted);
+    }
+    if (state.annCurrentPath.length > 1) {
+        annDrawPath(ctx, state.annCurrentPath, state.annColor, false, false);
+    }
+}
+
+function annDrawPath(ctx, points, color, closed, highlighted) {
+    if (points.length < 2) return;
+    ctx.beginPath();
+    const first = annImageToCanvas(points[0][0], points[0][1]);
+    if (!first) return;
+    ctx.moveTo(first[0], first[1]);
+    for (let i = 1; i < points.length; i++) {
+        const pt = annImageToCanvas(points[i][0], points[i][1]);
+        if (pt) ctx.lineTo(pt[0], pt[1]);
+    }
+    if (closed) ctx.closePath();
+    ctx.fillStyle = color + (highlighted ? '40' : '18');
+    if (closed) ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = highlighted ? 3 : 2;
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    if (highlighted) ctx.setLineDash([6, 4]); else ctx.setLineDash([]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+}
+
+// ── Drawing Events ───────────────────────────────────────
+(function() {
+    const canvas = document.getElementById('annotationCanvas');
+
+    canvas.addEventListener('mousedown', (e) => {
+        if (!state.annMode || e.button !== 0) return;
+        e.preventDefault();
+        state.annDrawing = true;
+        state.annCurrentPath = [];
+        const pt = annScreenToImage(e.clientX, e.clientY);
+        if (pt) state.annCurrentPath.push(pt);
+    });
+    canvas.addEventListener('mousemove', (e) => {
+        if (!state.annDrawing) return;
+        const pt = annScreenToImage(e.clientX, e.clientY);
+        if (pt) { state.annCurrentPath.push(pt); annRender(); }
+    });
+    canvas.addEventListener('mouseup', () => {
+        if (!state.annDrawing) return;
+        state.annDrawing = false;
+        annFinishStroke();
+    });
+    canvas.addEventListener('mouseleave', () => {
+        if (state.annDrawing) { state.annDrawing = false; state.annCurrentPath = []; annRender(); }
+    });
+
+    // Touch
+    canvas.addEventListener('touchstart', (e) => {
+        if (!state.annMode || e.touches.length !== 1) return;
+        e.preventDefault();
+        state.annDrawing = true;
+        state.annCurrentPath = [];
+        const pt = annScreenToImage(e.touches[0].clientX, e.touches[0].clientY);
+        if (pt) state.annCurrentPath.push(pt);
+    }, { passive: false });
+    canvas.addEventListener('touchmove', (e) => {
+        if (!state.annDrawing || e.touches.length !== 1) return;
+        e.preventDefault();
+        const pt = annScreenToImage(e.touches[0].clientX, e.touches[0].clientY);
+        if (pt) { state.annCurrentPath.push(pt); annRender(); }
+    }, { passive: false });
+    canvas.addEventListener('touchend', () => {
+        if (!state.annDrawing) return;
+        state.annDrawing = false;
+        annFinishStroke();
+    });
+})();
+
+function annFinishStroke() {
+    if (state.annCurrentPath.length > 5) {
+        const label = document.getElementById('annLabelInput').value.trim() || ANN_LEVELS[state.annLevel];
+        state.annotations.push({
+            id: 'ann_' + (++annIdCounter),
+            points_px: [...state.annCurrentPath],
+            color: state.annColor,
+            label: label,
+            level: state.annLevel,
+            created: new Date().toISOString(),
+        });
+        annUpdateCount();
+        annRenderList();
+    }
+    state.annCurrentPath = [];
+    annRender();
+}
+
+// ── Annotation List ──────────────────────────────────────
+function annUpdateCount() {
+    document.getElementById('annCount').textContent = state.annotations.length;
+    annUpdateExportBtn();
+}
+
+function annRenderList() {
+    const container = document.getElementById('annListScroll');
+    if (state.annotations.length === 0) {
+        container.innerHTML = '<div class="ann-list-empty">Dessinez sur la lame pour annoter</div>';
+        return;
+    }
+    container.innerHTML = state.annotations.map((ann, i) => {
+        const levelTag = ANN_LEVELS[ann.level] || '?';
+        const nPts = ann.points_px.length;
+        return `
+        <div class="ann-list-item ${ann.id === state.annHighlighted ? 'highlighted' : ''}"
+             onmouseenter="annHighlight('${ann.id}')" onmouseleave="annHighlight(null)">
+            <div class="ann-list-swatch" style="background:${ann.color}"></div>
+            <div class="ann-list-info">
+                <div class="ann-list-info-label" id="annLabel_${ann.id}" ondblclick="annStartEdit('${ann.id}')"
+                     title="Double-clic pour renommer">${ann.label}</div>
+                <div class="ann-list-info-meta">Niv.${ann.level} ${levelTag} · ${nPts} pts</div>
+            </div>
+            <div class="ann-list-actions">
+                <button class="ann-list-action goto" onclick="annGoTo('${ann.id}')" title="Aller à">&#8982;</button>
+                <button class="ann-list-action" onclick="annStartEdit('${ann.id}')" title="Renommer">&#9998;</button>
+                <button class="ann-list-action delete" onclick="annDeleteOne('${ann.id}')" title="Supprimer">&#10005;</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function annHighlight(id) {
+    state.annHighlighted = id;
+    annRender();
+    // Update highlighted class in list
+    document.querySelectorAll('.ann-list-item').forEach(el => el.classList.remove('highlighted'));
+    if (id) {
+        const items = document.querySelectorAll('.ann-list-item');
+        const idx = state.annotations.findIndex(a => a.id === id);
+        if (idx >= 0 && items[idx]) items[idx].classList.add('highlighted');
+    }
+}
+
+function annGoTo(id) {
+    const ann = state.annotations.find(a => a.id === id);
+    if (!ann || !state.osdViewer) return;
+    // Compute bounding box
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [x, y] of ann.points_px) {
+        if (x < minX) minX = x; if (y < minY) minY = y;
+        if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+    }
+    // Add padding
+    const padX = (maxX - minX) * 0.15;
+    const padY = (maxY - minY) * 0.15;
+    minX -= padX; minY -= padY; maxX += padX; maxY += padY;
+
+    const vp = state.osdViewer.viewport;
+    const topLeft = vp.imageToViewportCoordinates(new OpenSeadragon.Point(minX, minY));
+    const bottomRight = vp.imageToViewportCoordinates(new OpenSeadragon.Point(maxX, maxY));
+    const rect = new OpenSeadragon.Rect(topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
+    vp.fitBounds(rect);
+
+    state.annHighlighted = id;
+    annRender();
+    annRenderList();
+}
+
+function annStartEdit(id) {
+    const ann = state.annotations.find(a => a.id === id);
+    if (!ann) return;
+    const labelEl = document.getElementById('annLabel_' + id);
+    if (!labelEl) return;
+    const currentLabel = ann.label;
+    labelEl.innerHTML = `<input class="ann-edit-input" value="${currentLabel}"
+        onkeydown="if(event.key==='Enter')annFinishEdit('${id}',this.value);if(event.key==='Escape')annRenderList();"
+        onblur="annFinishEdit('${id}',this.value)">`;
+    labelEl.querySelector('input').focus();
+    labelEl.querySelector('input').select();
+}
+
+function annFinishEdit(id, newLabel) {
+    const ann = state.annotations.find(a => a.id === id);
+    if (ann) ann.label = newLabel.trim() || ANN_LEVELS[ann.level];
+    annRenderList();
+    annRender();
+}
+
+function annDeleteOne(id) {
+    state.annotations = state.annotations.filter(a => a.id !== id);
+    annUpdateCount();
+    annRenderList();
+    annRender();
+}
+
+function annUndo() {
+    if (state.annotations.length === 0) return;
+    state.annotations.pop();
+    annUpdateCount(); annRenderList(); annRender();
+}
+
+function annClearAll() {
+    if (state.annotations.length === 0) return;
+    if (!confirm(`Effacer ${state.annotations.length} annotation(s) ?`)) return;
+    state.annotations = [];
+    annUpdateCount(); annRenderList(); annRender();
+}
+
+async function annSave() {
+    if (state.viewMode !== 'slide' || state.currentSlideIndex < 0) return;
+    if (state.annotations.length === 0) { toast('Aucune annotation à sauvegarder', true); return; }
+    const slide = state.slides[state.currentSlideIndex];
+    const features = state.annotations.map(ann => ({
+        coordinates: [ann.points_px],
+        properties: {
+            id: ann.id, label: ann.label, color: ann.color,
+            level: ann.level, level_name: ANN_LEVELS[ann.level],
+            created: ann.created,
+        },
+    }));
+    try {
+        const res = await api('/api/annotations/save', {
+            root: state.root, slide_path: slide.path, features: features,
+        });
+        if (res.ok) toast(`${res.feature_count} annotation(s) sauvegardée(s)`);
+        else toast('Erreur: ' + (res.error || 'inconnue'), true);
+    } catch (e) { toast('Erreur réseau: ' + e.message, true); }
+}
+
+async function annLoad(slidePath) {
+    state.annotations = [];
+    state.annHighlighted = null;
+    annUpdateCount();
+    try {
+        const res = await fetch(`/api/annotations/load?root=${encodeURIComponent(state.root)}&slide_path=${encodeURIComponent(slidePath)}`);
+        const data = await res.json();
+        if (data.exists && data.features && data.features.length > 0) {
+            for (const feat of data.features) {
+                const coords = feat.geometry?.coordinates?.[0] || [];
+                const p = feat.properties || {};
+                state.annotations.push({
+                    id: p.id || 'ann_' + (++annIdCounter),
+                    points_px: coords,
+                    color: p.color || '#e74c3c',
+                    label: p.label || '',
+                    level: p.level || 1,
+                    created: p.created || '',
+                });
+            }
+            annUpdateCount();
+            toast(`${state.annotations.length} annotation(s) chargée(s)`);
+        }
+    } catch (e) {}
+    if (state.annMode) annRenderList();
+    annRender();
+}
+
+function annAttachViewportHandler() {
+    if (!state.osdViewer) return;
+    state.osdViewer.addHandler('update-viewport', () => {
+        if (state.annotations.length > 0 || state.annCurrentPath.length > 0) {
+            annResizeCanvas(); annRender();
+        }
+    });
+    state.osdViewer.addHandler('resize', () => { annResizeCanvas(); annRender(); });
+}
+
+// ── Tile Export ───────────────────────────────────────────
+function annPopulateLevels(slideInfo) {
+    const sel = document.getElementById('exportLevel');
+    sel.innerHTML = '';
+    if (!slideInfo || !slideInfo.level_dimensions) return;
+    slideInfo.level_dimensions.forEach((dims, i) => {
+        const ds = Math.round(slideInfo.dimensions[0] / dims[0]);
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = `Niv. ${i} — ${dims[0].toLocaleString()} × ${dims[1].toLocaleString()} (×${ds})`;
+        sel.appendChild(opt);
+    });
+}
+
+function annUpdateExportBtn() {
+    const btn = document.getElementById('exportBtn');
+    btn.disabled = state.annotations.length === 0 || state.viewMode !== 'slide';
+}
+
+async function annExportTiles() {
+    if (state.viewMode !== 'slide' || state.currentSlideIndex < 0 || state.annotations.length === 0) return;
+
+    const slide = state.slides[state.currentSlideIndex];
+    const targetLevel = parseInt(document.getElementById('exportLevel').value) || 0;
+    const tileSize = parseInt(document.getElementById('exportTileSize').value) || 512;
+    const fmt = document.getElementById('exportFormat').value || 'jpeg';
+
+    const btn = document.getElementById('exportBtn');
+    const progress = document.getElementById('exportProgress');
+    btn.disabled = true;
+    btn.textContent = 'Export en cours...';
+    progress.textContent = `${state.annotations.length} annotation(s), niveau ${targetLevel}, ${tileSize}px, ${fmt}`;
+
+    try {
+        const resp = await fetch('/api/annotations/export', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                slide_path: slide.path,
+                annotations: state.annotations.map(a => ({
+                    points_px: a.points_px,
+                    label: a.label,
+                    id: a.id,
+                    level: a.level,
+                })),
+                target_level: targetLevel,
+                tile_size: tileSize,
+                format: fmt,
+            }),
+        });
+
+        if (!resp.ok) {
+            const err = await resp.json();
+            toast('Erreur export: ' + (err.error || resp.statusText), true);
+            progress.textContent = 'Erreur';
+            return;
+        }
+
+        // Download the zip
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = resp.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '')
+            || `${slide.name}_tiles.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        const sizeMB = (blob.size / 1024 / 1024).toFixed(1);
+        progress.textContent = `Téléchargé (${sizeMB} Mo)`;
+        toast('Export terminé');
+    } catch (e) {
+        toast('Erreur: ' + e.message, true);
+        progress.textContent = 'Erreur';
+    } finally {
+        btn.textContent = 'Exporter les tuiles';
+        btn.disabled = state.annotations.length === 0;
+    }
+}
+
+// ── CR Panel ─────────────────────────────────────────────
+function toggleCR() {
+    const panel = document.getElementById('rightPanel');
+    const btn = document.getElementById('btnCR');
+    const handle = document.getElementById('resizeHandleRight');
+    const isVisible = panel.classList.contains('visible');
+
+    if (isVisible) {
+        panel.classList.remove('visible');
+        btn.classList.remove('active');
+        handle.classList.remove('visible');
+    } else {
+        // Close annotation panel if open
+        if (state.annMode) toggleAnnotationMode();
+        const iframe = document.getElementById('crIframe');
+        if (!iframe.src || iframe.src === '' || iframe.src === window.location.href) {
+            iframe.src = '/static/cr_placenta.html';
+        }
+        panel.classList.add('visible');
+        btn.classList.add('active');
+        handle.classList.add('visible');
+    }
+    if (state.osdViewer) setTimeout(() => state.osdViewer.viewport.goHome(), 300);
+}
+
+// ── Sidebar Resize ───────────────────────────────────────
+(function() {
+    const handle = document.getElementById('resizeHandle');
+    const sidebar = document.querySelector('.sidebar');
+    const overlay = document.getElementById('dragOverlay');
+    const MIN_W = 140, MAX_W = 600;
+    let dragging = false, startX, startW;
+    function startDrag(x) {
+        dragging = true; startX = x; startW = sidebar.offsetWidth;
+        handle.classList.add('dragging'); overlay.classList.add('active');
+    }
+    function doDrag(x) {
+        if (!dragging) return;
+        const w = Math.min(MAX_W, Math.max(MIN_W, startW + (x - startX)));
+        sidebar.style.width = w + 'px'; sidebar.style.minWidth = w + 'px';
+    }
+    function stopDrag() {
+        if (!dragging) return;
+        dragging = false; handle.classList.remove('dragging'); overlay.classList.remove('active');
+        if (state.osdViewer) setTimeout(() => state.osdViewer.viewport.goHome(), 50);
+    }
+    handle.addEventListener('mousedown', (e) => { e.preventDefault(); startDrag(e.clientX); });
+    document.addEventListener('mousemove', (e) => doDrag(e.clientX));
+    document.addEventListener('mouseup', stopDrag);
+    overlay.addEventListener('mousemove', (e) => doDrag(e.clientX));
+    overlay.addEventListener('mouseup', stopDrag);
+    handle.addEventListener('touchstart', (e) => startDrag(e.touches[0].clientX), { passive: true });
+    document.addEventListener('touchmove', (e) => { if (dragging) doDrag(e.touches[0].clientX); }, { passive: true });
+    document.addEventListener('touchend', stopDrag);
+})();
+
+// ── Right Panel Resize ───────────────────────────────────
+(function() {
+    const handle = document.getElementById('resizeHandleRight');
+    const crPanel = document.getElementById('rightPanel');
+    const annPanel = document.getElementById('annPanel');
+    const overlay = document.getElementById('dragOverlay');
+    const MIN_W = 280, MAX_W = 900;
+    let dragging = false, startX, startW, activePanel;
+
+    function getActivePanel() {
+        if (annPanel.classList.contains('visible')) return annPanel;
+        if (crPanel.classList.contains('visible')) return crPanel;
+        return null;
+    }
+
+    function startDrag(x) {
+        activePanel = getActivePanel();
+        if (!activePanel) return;
+        dragging = true; startX = x; startW = activePanel.offsetWidth;
+        handle.classList.add('dragging'); overlay.classList.add('active');
+        activePanel.classList.add('no-transition');
+    }
+    function doDrag(x) {
+        if (!dragging || !activePanel) return;
+        const w = Math.min(MAX_W, Math.max(MIN_W, startW - (x - startX)));
+        activePanel.style.width = w + 'px'; activePanel.style.minWidth = w + 'px';
+    }
+    function stopDrag() {
+        if (!dragging) return;
+        dragging = false; handle.classList.remove('dragging'); overlay.classList.remove('active');
+        if (activePanel) activePanel.classList.remove('no-transition');
+        if (state.osdViewer) setTimeout(() => state.osdViewer.viewport.goHome(), 50);
+    }
+    handle.addEventListener('mousedown', (e) => { e.preventDefault(); startDrag(e.clientX); });
+    document.addEventListener('mousemove', (e) => doDrag(e.clientX));
+    document.addEventListener('mouseup', stopDrag);
+    overlay.addEventListener('mousemove', (e) => doDrag(e.clientX));
+    overlay.addEventListener('mouseup', stopDrag);
+    handle.addEventListener('touchstart', (e) => startDrag(e.touches[0].clientX), { passive: true });
+    document.addEventListener('touchmove', (e) => { if (dragging) doDrag(e.touches[0].clientX); }, { passive: true });
+    document.addEventListener('touchend', stopDrag);
+})();
+
+// ── Auto-load ────────────────────────────────────────────
+if (document.getElementById('rootInput').value.trim()) { loadCases(); }
+</script>
+</body>
+</html>
