@@ -1078,32 +1078,24 @@ function toggleLabel() {
 
     // When image loads, capture natural dimensions, resize canvas, and load existing annotations
     img.onload = function() {
+        // Use the browser's natural dimensions — these always match the displayed image
         macroAnnState.imgNaturalW = img.naturalWidth;
         macroAnnState.imgNaturalH = img.naturalHeight;
         macroAnnResizeCanvas();
         macroAnnRender();
         // Load existing macro annotations
         macroAnnLoad(slide.path);
-        // Also fetch macro info from backend for accurate dimensions
-        fetch(`/api/slide/macro/info?path=${encodeURIComponent(slide.path)}`)
-            .then(r => r.json())
-            .then(data => {
-                if (data.width && data.height) {
-                    macroAnnState.imgNaturalW = data.width;
-                    macroAnnState.imgNaturalH = data.height;
-                    macroAnnState.macroType = data.type || 'macro';
-                }
-            })
-            .catch(() => {});
     };
 
     // Try label first, fallback to macro
+    macroAnnState.macroType = 'label';
     img.onerror = function() {
         img.onerror = function() {
             toast('Pas d\'étiquette disponible pour cette lame', true);
             popup.classList.remove('visible');
             state.labelVisible = false;
         };
+        macroAnnState.macroType = 'macro';
         img.src = `/api/slide/label?path=${encodeURIComponent(slide.path)}&type=macro`;
         document.getElementById('labelPopupTitle').textContent = 'Macro — ' + slide.name;
     };
@@ -1666,7 +1658,9 @@ function macroAnnResizeCanvas() {
 
 // Convert screen coordinates to macro image pixel coordinates
 function macroAnnScreenToImage(screenX, screenY) {
+    if (!macroAnnState.imgNaturalW || !macroAnnState.imgNaturalH) return null;
     const img = document.getElementById('labelPopupImg');
+    if (!img.clientWidth || !img.clientHeight) return null;
     const rect = img.getBoundingClientRect();
     // Position relative to displayed image
     const relX = screenX - rect.left;
@@ -1679,6 +1673,7 @@ function macroAnnScreenToImage(screenX, screenY) {
 
 // Convert macro image pixel coordinates to canvas coordinates
 function macroAnnImageToCanvas(imgX, imgY) {
+    if (!macroAnnState.imgNaturalW || !macroAnnState.imgNaturalH) return null;
     const img = document.getElementById('labelPopupImg');
     const scaleX = img.clientWidth / macroAnnState.imgNaturalW;
     const scaleY = img.clientHeight / macroAnnState.imgNaturalH;
@@ -1703,9 +1698,11 @@ function macroAnnDrawPath(ctx, points, color, closed) {
     if (points.length < 2) return;
     ctx.beginPath();
     const first = macroAnnImageToCanvas(points[0][0], points[0][1]);
+    if (!first) return;
     ctx.moveTo(first[0], first[1]);
     for (let i = 1; i < points.length; i++) {
         const pt = macroAnnImageToCanvas(points[i][0], points[i][1]);
+        if (!pt) continue;
         ctx.lineTo(pt[0], pt[1]);
     }
     if (closed) ctx.closePath();
@@ -1724,15 +1721,17 @@ function macroAnnDrawPath(ctx, points, color, closed) {
 
     canvas.addEventListener('mousedown', (e) => {
         if (!macroAnnState.active || e.button !== 0) return;
+        const pt = macroAnnScreenToImage(e.clientX, e.clientY);
+        if (!pt) return;
         e.preventDefault();
         macroAnnState.drawing = true;
         macroAnnState.currentPath = [];
-        const pt = macroAnnScreenToImage(e.clientX, e.clientY);
         macroAnnState.currentPath.push(pt);
     });
     canvas.addEventListener('mousemove', (e) => {
         if (!macroAnnState.drawing) return;
         const pt = macroAnnScreenToImage(e.clientX, e.clientY);
+        if (!pt) return;
         macroAnnState.currentPath.push(pt);
         macroAnnRender();
     });
@@ -1752,16 +1751,18 @@ function macroAnnDrawPath(ctx, points, color, closed) {
     // Touch support
     canvas.addEventListener('touchstart', (e) => {
         if (!macroAnnState.active || e.touches.length !== 1) return;
+        const pt = macroAnnScreenToImage(e.touches[0].clientX, e.touches[0].clientY);
+        if (!pt) return;
         e.preventDefault();
         macroAnnState.drawing = true;
         macroAnnState.currentPath = [];
-        const pt = macroAnnScreenToImage(e.touches[0].clientX, e.touches[0].clientY);
         macroAnnState.currentPath.push(pt);
     }, { passive: false });
     canvas.addEventListener('touchmove', (e) => {
         if (!macroAnnState.drawing || e.touches.length !== 1) return;
         e.preventDefault();
         const pt = macroAnnScreenToImage(e.touches[0].clientX, e.touches[0].clientY);
+        if (!pt) return;
         macroAnnState.currentPath.push(pt);
         macroAnnRender();
     }, { passive: false });
