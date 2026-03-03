@@ -196,9 +196,20 @@
             max-width: 90vw;
         }
         .label-popup.visible { display: flex; }
+        .label-popup-img-container {
+            position: relative; display: inline-block;
+        }
         .label-popup img {
-            max-height: 40vh; max-width: 80vw; border-radius: var(--radius-sm);
-            object-fit: contain;
+            max-height: 60vh; max-width: 80vw; border-radius: var(--radius-sm);
+            object-fit: contain; display: block;
+        }
+        .label-popup-canvas {
+            position: absolute; top: 0; left: 0;
+            border-radius: var(--radius-sm);
+            pointer-events: none;
+        }
+        .label-popup-canvas.drawing {
+            pointer-events: auto; cursor: crosshair;
         }
         .label-popup-bar {
             display: flex; align-items: center; gap: 8px; width: 100%;
@@ -214,6 +225,41 @@
             transition: all 0.15s;
         }
         .label-popup-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .macro-ann-toolbar {
+            display: none; align-items: center; gap: 6px; width: 100%;
+            padding: 4px 0;
+        }
+        .macro-ann-toolbar.visible { display: flex; flex-wrap: wrap; }
+        .macro-ann-btn {
+            padding: 4px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+            background: var(--bg-tertiary); color: var(--text-secondary); font-size: 11px;
+            cursor: pointer; transition: all 0.15s; font-family: 'DM Sans', sans-serif;
+        }
+        .macro-ann-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .macro-ann-btn.active { background: var(--accent-dim); border-color: var(--accent); color: white; }
+        .macro-ann-btn.save { border-color: var(--success); color: var(--success); }
+        .macro-ann-btn.save:hover { background: rgba(74, 222, 128, 0.15); }
+        .macro-ann-btn.danger { border-color: var(--danger); color: var(--danger); }
+        .macro-ann-btn.danger:hover { background: rgba(248, 113, 113, 0.15); }
+        .macro-ann-colors {
+            display: flex; gap: 3px; align-items: center;
+        }
+        .macro-ann-color-btn {
+            width: 16px; height: 16px; border-radius: 50%; border: 2px solid transparent;
+            cursor: pointer; transition: all 0.15s;
+        }
+        .macro-ann-color-btn.active { border-color: white; transform: scale(1.2); }
+        .macro-ann-input {
+            background: var(--bg-tertiary); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); padding: 3px 8px; color: var(--text-primary);
+            font-size: 11px; width: 120px; outline: none;
+            font-family: 'DM Sans', sans-serif;
+        }
+        .macro-ann-input:focus { border-color: var(--accent); }
+        .macro-ann-count {
+            font-size: 10px; color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
 
         /* ── View mode badge ─────────────────────────────── */
         .view-badge {
@@ -608,9 +654,21 @@
         <div class="label-popup" id="labelPopup">
             <div class="label-popup-bar">
                 <span class="label-popup-title" id="labelPopupTitle">Étiquette</span>
+                <button class="macro-ann-btn" id="btnMacroAnnotate" onclick="macroAnnToggle()" title="Annoter l'image macro">&#9998; Annoter</button>
                 <button class="label-popup-close" onclick="closeLabel()" title="Fermer">&times;</button>
             </div>
-            <img id="labelPopupImg" src="" alt="Étiquette">
+            <div class="macro-ann-toolbar" id="macroAnnToolbar">
+                <div class="macro-ann-colors" id="macroAnnColors"></div>
+                <input type="text" class="macro-ann-input" id="macroAnnLabelInput" placeholder="Label...">
+                <button class="macro-ann-btn" onclick="macroAnnUndo()">Annuler</button>
+                <button class="macro-ann-btn danger" onclick="macroAnnClearAll()">Effacer</button>
+                <button class="macro-ann-btn save" onclick="macroAnnSave()">Sauvegarder</button>
+                <span class="macro-ann-count" id="macroAnnCount">0 annotation(s)</span>
+            </div>
+            <div class="label-popup-img-container">
+                <img id="labelPopupImg" src="" alt="Étiquette">
+                <canvas class="label-popup-canvas" id="macroAnnCanvas"></canvas>
+            </div>
         </div>
 
         <div class="shortcuts-hint" id="shortcutsHint">
@@ -1006,6 +1064,39 @@ function toggleLabel() {
     const img = document.getElementById('labelPopupImg');
     const popup = document.getElementById('labelPopup');
 
+    // Reset macro annotation state for new image
+    macroAnnState.active = false;
+    macroAnnState.drawing = false;
+    macroAnnState.currentPath = [];
+    macroAnnState.annotations = [];
+    macroAnnState.imgNaturalW = 0;
+    macroAnnState.imgNaturalH = 0;
+    document.getElementById('btnMacroAnnotate').classList.remove('active');
+    document.getElementById('macroAnnToolbar').classList.remove('visible');
+    document.getElementById('macroAnnCanvas').classList.remove('drawing');
+    macroAnnUpdateCount();
+
+    // When image loads, capture natural dimensions, resize canvas, and load existing annotations
+    img.onload = function() {
+        macroAnnState.imgNaturalW = img.naturalWidth;
+        macroAnnState.imgNaturalH = img.naturalHeight;
+        macroAnnResizeCanvas();
+        macroAnnRender();
+        // Load existing macro annotations
+        macroAnnLoad(slide.path);
+        // Also fetch macro info from backend for accurate dimensions
+        fetch(`/api/slide/macro/info?path=${encodeURIComponent(slide.path)}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.width && data.height) {
+                    macroAnnState.imgNaturalW = data.width;
+                    macroAnnState.imgNaturalH = data.height;
+                    macroAnnState.macroType = data.type || 'macro';
+                }
+            })
+            .catch(() => {});
+    };
+
     // Try label first, fallback to macro
     img.onerror = function() {
         img.onerror = function() {
@@ -1024,6 +1115,15 @@ function toggleLabel() {
 function closeLabel() {
     document.getElementById('labelPopup').classList.remove('visible');
     state.labelVisible = false;
+    // Deactivate macro annotation mode
+    if (macroAnnState.active) {
+        macroAnnState.active = false;
+        macroAnnState.drawing = false;
+        macroAnnState.currentPath = [];
+        document.getElementById('btnMacroAnnotate').classList.remove('active');
+        document.getElementById('macroAnnToolbar').classList.remove('visible');
+        document.getElementById('macroAnnCanvas').classList.remove('drawing');
+    }
 }
 
 // ── Keyboard ─────────────────────────────────────────────
@@ -1503,6 +1603,263 @@ function annAttachViewportHandler() {
         }
     });
     state.osdViewer.addHandler('resize', () => { annResizeCanvas(); annRender(); });
+}
+
+// ── Macro Image Annotation System ─────────────────────────
+let macroAnnState = {
+    active: false,
+    drawing: false,
+    currentPath: [],       // [[x_px, y_px], ...] in macro image pixels
+    annotations: [],       // [{id, points_px, color, label, created}, ...]
+    color: '#e74c3c',
+    imgNaturalW: 0,        // Actual macro image width in pixels
+    imgNaturalH: 0,        // Actual macro image height in pixels
+    macroType: 'macro',    // 'macro' or 'label'
+};
+let macroAnnIdCounter = 0;
+
+// Init macro annotation color buttons
+(function() {
+    const container = document.getElementById('macroAnnColors');
+    container.innerHTML = ANN_COLORS.map((c, i) => `
+        <div class="macro-ann-color-btn ${i === 0 ? 'active' : ''}"
+             style="background:${c.color}"
+             onclick="macroAnnSetColor('${c.color}', this)"
+             title="${c.name}"></div>
+    `).join('');
+})();
+
+function macroAnnSetColor(color, el) {
+    macroAnnState.color = color;
+    document.querySelectorAll('.macro-ann-color-btn').forEach(b => b.classList.remove('active'));
+    if (el) el.classList.add('active');
+}
+
+function macroAnnToggle() {
+    macroAnnState.active = !macroAnnState.active;
+    const btn = document.getElementById('btnMacroAnnotate');
+    const toolbar = document.getElementById('macroAnnToolbar');
+    const canvas = document.getElementById('macroAnnCanvas');
+
+    btn.classList.toggle('active', macroAnnState.active);
+    toolbar.classList.toggle('visible', macroAnnState.active);
+    canvas.classList.toggle('drawing', macroAnnState.active);
+
+    if (macroAnnState.active) {
+        macroAnnResizeCanvas();
+        macroAnnRender();
+    } else {
+        macroAnnState.drawing = false;
+        macroAnnState.currentPath = [];
+    }
+}
+
+function macroAnnResizeCanvas() {
+    const img = document.getElementById('labelPopupImg');
+    const canvas = document.getElementById('macroAnnCanvas');
+    // Match canvas size to the displayed image size
+    canvas.width = img.clientWidth;
+    canvas.height = img.clientHeight;
+    canvas.style.width = img.clientWidth + 'px';
+    canvas.style.height = img.clientHeight + 'px';
+}
+
+// Convert screen coordinates to macro image pixel coordinates
+function macroAnnScreenToImage(screenX, screenY) {
+    const img = document.getElementById('labelPopupImg');
+    const rect = img.getBoundingClientRect();
+    // Position relative to displayed image
+    const relX = screenX - rect.left;
+    const relY = screenY - rect.top;
+    // Scale to natural image dimensions
+    const scaleX = macroAnnState.imgNaturalW / img.clientWidth;
+    const scaleY = macroAnnState.imgNaturalH / img.clientHeight;
+    return [Math.round(relX * scaleX), Math.round(relY * scaleY)];
+}
+
+// Convert macro image pixel coordinates to canvas coordinates
+function macroAnnImageToCanvas(imgX, imgY) {
+    const img = document.getElementById('labelPopupImg');
+    const scaleX = img.clientWidth / macroAnnState.imgNaturalW;
+    const scaleY = img.clientHeight / macroAnnState.imgNaturalH;
+    return [imgX * scaleX, imgY * scaleY];
+}
+
+function macroAnnRender() {
+    const canvas = document.getElementById('macroAnnCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    for (const ann of macroAnnState.annotations) {
+        macroAnnDrawPath(ctx, ann.points_px, ann.color, true);
+    }
+    if (macroAnnState.currentPath.length > 1) {
+        macroAnnDrawPath(ctx, macroAnnState.currentPath, macroAnnState.color, false);
+    }
+}
+
+function macroAnnDrawPath(ctx, points, color, closed) {
+    if (points.length < 2) return;
+    ctx.beginPath();
+    const first = macroAnnImageToCanvas(points[0][0], points[0][1]);
+    ctx.moveTo(first[0], first[1]);
+    for (let i = 1; i < points.length; i++) {
+        const pt = macroAnnImageToCanvas(points[i][0], points[i][1]);
+        ctx.lineTo(pt[0], pt[1]);
+    }
+    if (closed) ctx.closePath();
+    ctx.fillStyle = color + '25';
+    if (closed) ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.stroke();
+}
+
+// Drawing events on macro canvas
+(function() {
+    const canvas = document.getElementById('macroAnnCanvas');
+
+    canvas.addEventListener('mousedown', (e) => {
+        if (!macroAnnState.active || e.button !== 0) return;
+        e.preventDefault();
+        macroAnnState.drawing = true;
+        macroAnnState.currentPath = [];
+        const pt = macroAnnScreenToImage(e.clientX, e.clientY);
+        macroAnnState.currentPath.push(pt);
+    });
+    canvas.addEventListener('mousemove', (e) => {
+        if (!macroAnnState.drawing) return;
+        const pt = macroAnnScreenToImage(e.clientX, e.clientY);
+        macroAnnState.currentPath.push(pt);
+        macroAnnRender();
+    });
+    canvas.addEventListener('mouseup', () => {
+        if (!macroAnnState.drawing) return;
+        macroAnnState.drawing = false;
+        macroAnnFinishStroke();
+    });
+    canvas.addEventListener('mouseleave', () => {
+        if (macroAnnState.drawing) {
+            macroAnnState.drawing = false;
+            macroAnnState.currentPath = [];
+            macroAnnRender();
+        }
+    });
+
+    // Touch support
+    canvas.addEventListener('touchstart', (e) => {
+        if (!macroAnnState.active || e.touches.length !== 1) return;
+        e.preventDefault();
+        macroAnnState.drawing = true;
+        macroAnnState.currentPath = [];
+        const pt = macroAnnScreenToImage(e.touches[0].clientX, e.touches[0].clientY);
+        macroAnnState.currentPath.push(pt);
+    }, { passive: false });
+    canvas.addEventListener('touchmove', (e) => {
+        if (!macroAnnState.drawing || e.touches.length !== 1) return;
+        e.preventDefault();
+        const pt = macroAnnScreenToImage(e.touches[0].clientX, e.touches[0].clientY);
+        macroAnnState.currentPath.push(pt);
+        macroAnnRender();
+    }, { passive: false });
+    canvas.addEventListener('touchend', () => {
+        if (!macroAnnState.drawing) return;
+        macroAnnState.drawing = false;
+        macroAnnFinishStroke();
+    });
+})();
+
+function macroAnnFinishStroke() {
+    if (macroAnnState.currentPath.length > 5) {
+        const label = document.getElementById('macroAnnLabelInput').value.trim() || 'Macro';
+        macroAnnState.annotations.push({
+            id: 'macro_ann_' + (++macroAnnIdCounter),
+            points_px: [...macroAnnState.currentPath],
+            color: macroAnnState.color,
+            label: label,
+            created: new Date().toISOString(),
+        });
+        macroAnnUpdateCount();
+    }
+    macroAnnState.currentPath = [];
+    macroAnnRender();
+}
+
+function macroAnnUpdateCount() {
+    document.getElementById('macroAnnCount').textContent =
+        macroAnnState.annotations.length + ' annotation(s)';
+}
+
+function macroAnnUndo() {
+    if (macroAnnState.annotations.length === 0) return;
+    macroAnnState.annotations.pop();
+    macroAnnUpdateCount();
+    macroAnnRender();
+}
+
+function macroAnnClearAll() {
+    if (macroAnnState.annotations.length === 0) return;
+    if (!confirm(`Effacer ${macroAnnState.annotations.length} annotation(s) macro ?`)) return;
+    macroAnnState.annotations = [];
+    macroAnnUpdateCount();
+    macroAnnRender();
+}
+
+async function macroAnnSave() {
+    if (state.viewMode !== 'slide' || state.currentSlideIndex < 0) return;
+    if (macroAnnState.annotations.length === 0) {
+        toast('Aucune annotation macro à sauvegarder', true); return;
+    }
+    const slide = state.slides[state.currentSlideIndex];
+    const features = macroAnnState.annotations.map(ann => ({
+        coordinates: [ann.points_px],
+        properties: {
+            id: ann.id,
+            label: ann.label,
+            color: ann.color,
+            created: ann.created,
+        },
+    }));
+    try {
+        const res = await api('/api/annotations/macro/save', {
+            root: state.root,
+            slide_path: slide.path,
+            features: features,
+            macro_dimensions: [macroAnnState.imgNaturalW, macroAnnState.imgNaturalH],
+        });
+        if (res.ok) toast(`${res.feature_count} annotation(s) macro sauvegardée(s)`);
+        else toast('Erreur: ' + (res.error || 'inconnue'), true);
+    } catch (e) { toast('Erreur réseau: ' + e.message, true); }
+}
+
+async function macroAnnLoad(slidePath) {
+    macroAnnState.annotations = [];
+    macroAnnUpdateCount();
+    try {
+        const res = await fetch(
+            `/api/annotations/macro/load?root=${encodeURIComponent(state.root)}&slide_path=${encodeURIComponent(slidePath)}`
+        );
+        const data = await res.json();
+        if (data.exists && data.features && data.features.length > 0) {
+            for (const feat of data.features) {
+                const coords = feat.geometry?.coordinates?.[0] || [];
+                const p = feat.properties || {};
+                macroAnnState.annotations.push({
+                    id: p.id || 'macro_ann_' + (++macroAnnIdCounter),
+                    points_px: coords,
+                    color: p.color || '#e74c3c',
+                    label: p.label || 'Macro',
+                    created: p.created || '',
+                });
+            }
+            macroAnnUpdateCount();
+            toast(`${macroAnnState.annotations.length} annotation(s) macro chargée(s)`);
+        }
+    } catch (e) {}
+    macroAnnRender();
 }
 
 // ── Tile Export ───────────────────────────────────────────
