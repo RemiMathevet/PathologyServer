@@ -1609,7 +1609,7 @@ function toggleCR() {
         btn.classList.add('active');
         handle.classList.add('visible');
     }
-    if (state.osdViewer) setTimeout(() => state.osdViewer.viewport.goHome(), 300);
+    if (state.osdViewer) setTimeout(() => state.osdViewer.viewport.resize(), 300);
 }
 
 // ── Sidebar Resize ───────────────────────────────────────
@@ -1631,7 +1631,7 @@ function toggleCR() {
     function stopDrag() {
         if (!dragging) return;
         dragging = false; handle.classList.remove('dragging'); overlay.classList.remove('active');
-        if (state.osdViewer) setTimeout(() => state.osdViewer.viewport.goHome(), 50);
+        if (state.osdViewer) setTimeout(() => state.osdViewer.viewport.resize(), 50);
     }
     handle.addEventListener('mousedown', (e) => { e.preventDefault(); startDrag(e.clientX); });
     document.addEventListener('mousemove', (e) => doDrag(e.clientX));
@@ -1674,7 +1674,7 @@ function toggleCR() {
         if (!dragging) return;
         dragging = false; handle.classList.remove('dragging'); overlay.classList.remove('active');
         if (activePanel) activePanel.classList.remove('no-transition');
-        if (state.osdViewer) setTimeout(() => state.osdViewer.viewport.goHome(), 50);
+        if (state.osdViewer) setTimeout(() => state.osdViewer.viewport.resize(), 50);
     }
     handle.addEventListener('mousedown', (e) => { e.preventDefault(); startDrag(e.clientX); });
     document.addEventListener('mousemove', (e) => doDrag(e.clientX));
