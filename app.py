@@ -263,6 +263,31 @@ def slide_label():
         abort(404)
 
 
+@app.route("/api/slide/macro/info")
+def slide_macro_info():
+    """Get macro image dimensions for annotation coordinate mapping."""
+    path = request.args.get("path", "")
+    if not path or not os.path.isfile(path):
+        abort(404)
+    try:
+        slide = get_slide(path)
+        images = slide.associated_images
+        # Try macro first, then label
+        for img_type in ("macro", "label"):
+            if img_type in images:
+                img = images[img_type]
+                w, h = img.size
+                return jsonify({
+                    "type": img_type,
+                    "width": w,
+                    "height": h,
+                    "available_types": list(images.keys()),
+                })
+        return jsonify({"error": "Pas d'image macro disponible"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ── Photo Routes ───────────────────────────────────────────────────────────
 MIME_MAP = {
     ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
@@ -329,6 +354,17 @@ def get_annotation_path(root: str, slide_path: str) -> Path:
     ann_dir = root_path / "annotations"
     ann_dir.mkdir(parents=True, exist_ok=True)
     return ann_dir / f"{slide_stem}.geojson"
+
+
+def get_macro_annotation_path(root: str, slide_path: str) -> Path:
+    """Get the GeoJSON annotation file path for a slide's macro image.
+    Stored in {root}/annotations/{slide_stem}_macro.geojson
+    """
+    root_path = Path(root)
+    slide_stem = Path(slide_path).stem
+    ann_dir = root_path / "annotations"
+    ann_dir.mkdir(parents=True, exist_ok=True)
+    return ann_dir / f"{slide_stem}_macro.geojson"
 
 
 def get_slide_calibration(slide_path: str) -> dict:
@@ -452,6 +488,87 @@ def annotations_load():
         return jsonify({"error": "Paramètres manquants"}), 400
 
     ann_path = get_annotation_path(root, slide_path)
+    if not ann_path.is_file():
+        return jsonify({"features": [], "exists": False})
+
+    try:
+        with open(ann_path, "r", encoding="utf-8") as f:
+            geojson = json.load(f)
+        return jsonify({
+            "exists": True,
+            "path": str(ann_path),
+            **geojson,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/annotations/macro/save", methods=["POST"])
+def annotations_macro_save():
+    """Save macro image annotations as GeoJSON (coordinates in pixels)."""
+    data = request.get_json()
+    root = data.get("root", "")
+    slide_path = data.get("slide_path", "")
+    features = data.get("features", [])
+    macro_dimensions = data.get("macro_dimensions", [0, 0])
+
+    if not root or not slide_path:
+        return jsonify({"error": "Paramètres manquants"}), 400
+
+    # Build GeoJSON features (coordinates in macro image pixels)
+    geojson_features = []
+    for feat in features:
+        coords_px = feat.get("coordinates", [])
+        props = feat.get("properties", {})
+        geojson_feat = {
+            "type": "Feature",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": coords_px,
+            },
+            "properties": {
+                **props,
+                "unit": "pixels (macro image)",
+            },
+        }
+        geojson_features.append(geojson_feat)
+
+    geojson = {
+        "type": "FeatureCollection",
+        "metadata": {
+            "slide_name": Path(slide_path).name,
+            "slide_path": slide_path,
+            "image_type": "macro",
+            "macro_dimensions_px": macro_dimensions,
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+            "generator": "FoetoPath Slide Viewer",
+        },
+        "features": geojson_features,
+    }
+
+    try:
+        ann_path = get_macro_annotation_path(root, slide_path)
+        with open(ann_path, "w", encoding="utf-8") as f:
+            json.dump(geojson, f, indent=2, ensure_ascii=False)
+        return jsonify({
+            "ok": True,
+            "path": str(ann_path),
+            "feature_count": len(geojson_features),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/annotations/macro/load")
+def annotations_macro_load():
+    """Load macro image annotations GeoJSON."""
+    root = request.args.get("root", "")
+    slide_path = request.args.get("slide_path", "")
+
+    if not root or not slide_path:
+        return jsonify({"error": "Paramètres manquants"}), 400
+
+    ann_path = get_macro_annotation_path(root, slide_path)
     if not ann_path.is_file():
         return jsonify({"features": [], "exists": False})
 
